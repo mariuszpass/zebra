@@ -53,9 +53,27 @@ class Client
     {
         $this->socket = @socket_create(AF_INET, SOCK_STREAM, SOL_TCP);
 
-        if (!$this->socket || !@socket_connect($this->socket, $host, $port)) {
-            $error = $this->getLastError();
-            throw new CommunicationException($error['message'], $error['code']);
+        if ($this->socket) {
+            $this->setSocketOption(SO_SNDTIMEO);
+            $this->setSocketOption(SO_RCVTIMEO);
+
+            if (!@socket_connect($this->socket, $host, $port)) {
+                throw new CommunicationException('Connection error - timeout!');
+            }
+        } else {
+            throw new CommunicationException('Socket creation error');
+        }
+    }
+
+    protected function setSocketOption(int $option): void
+    {
+        $timeout = [
+            'sec' => 2,
+            'usec' => 0
+        ];
+
+        if (!socket_set_option($this->socket, SOL_SOCKET, $option, $timeout)) {
+            throw new CommunicationException(sprintf('Socket option error: %d!', $option));
         }
     }
 
@@ -77,7 +95,7 @@ class Client
     {
         if (false === @socket_write($this->socket, $zpl)) {
             $error = $this->getLastError();
-            throw new CommunicationException($error['message'], $error['code']);
+            throw new CommunicationException(sprintf('Writing error: [%s] %s', $error['code'], $error['message']));
         }
     }
 
@@ -105,7 +123,7 @@ class Client
         $this->send($zpl);
 
         if (!@socket_recv($this->socket, $response, 96, 0)) {
-            return null;
+            throw new CommunicationException('Response error - timeout!');
         }
 
         return PrinterStatus::createFromRawResponse($response);
